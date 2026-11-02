@@ -112,6 +112,19 @@ def main():
         help="After all downloads succeed, delete remote models not listed in the manifest",
     )
     sync.add_argument("-y", "--yes", action="store_true", help="Skip the --rm confirmation")
+    benchmark = sub.add_parser(
+        "benchmark", help="Time workflows across GPU/CPU configs on fresh Modal containers"
+    )
+    benchmark_sub = benchmark.add_subparsers(dest="benchmark_command", required=True)
+    bench_run = benchmark_sub.add_parser("run", help="Run every config × workflow job once")
+    bench_run.add_argument("spec", type=Path, help="YAML listing workflows and configs")
+    bench_run.add_argument("--list", action="store_true", help="Print numbered jobs; run none")
+    bench_run.add_argument("--only", default="", help="Comma-separated job ids, e.g. 3,7")
+    bench_run.add_argument("--label", default="", help="Name for this pass when merging")
+    bench_run.add_argument("--bridge-url", default=DEFAULT_BRIDGE_URL)
+    bench_merge = benchmark_sub.add_parser("merge", help="Combine results files from passes")
+    bench_merge.add_argument("files", type=Path, nargs="+")
+    bench_merge.add_argument("-o", "--output", type=Path, required=True)
     args = parser.parse_args()
     os.environ["COMFY_BRIDGE_CONFIG"] = str(args.config.resolve())
     logging.basicConfig(
@@ -136,6 +149,19 @@ def main():
             from .model_manifest import sync_manifest
 
             asyncio.run(sync_manifest(args))
+        elif args.command == "benchmark" and args.benchmark_command == "merge":
+            from .benchmark import merge_files
+
+            merge_files(args.files, args.output)
+        elif args.command == "benchmark" and args.list:
+            from .benchmark import expand_jobs, format_jobs, load_spec, select_jobs
+
+            print(format_jobs(select_jobs(expand_jobs(load_spec(args.spec)), args.only)))
+        elif args.command == "benchmark":
+            # Imported late: modal_app reads COMFY_BRIDGE_CONFIG at import time.
+            from .benchmark_app import run_benchmark
+
+            raise SystemExit(asyncio.run(run_benchmark(args)))
         elif args.command == "info":
             asyncio.run(run_model_command(args))
         elif args.command == "status":
