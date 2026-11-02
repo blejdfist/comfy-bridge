@@ -1,0 +1,5 @@
+version: 1
+nodes:
+  - name: ComfyUI-KJNodes
+    repository: https://github.com/kijai/ComfyUI-KJNodes
+    revision: 37ca7aff7ed14dde6ba3c0b25713e21c18b28dcb

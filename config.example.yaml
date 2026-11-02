@@ -1,0 +1,40 @@
+# Copy to config.yaml and edit before deploying. No API keys belong here.
+# Modal GPU reference (checked 2026-10-25).
+# Prices are approximate USD per GPU-hour, converted from per-second rates.
+# CPU, system RAM, storage, and network charges are additional; prices can change.
+#
+# GPU setting     | VRAM (GB) | USD/hour | Notes
+# ----------------|-----------|----------|-----------------------------------------
+# T4              | 16        | 0.59     | Tight for the current Krea2 FP8 workflow
+# L4              | 24        | 0.80     | Lower-cost candidate; benchmark first
+# A10             | 24        | 1.10     | Lower-cost candidate; benchmark first
+# L40S            | 48        | 1.95     | Current tested Krea2 default
+# A100            | 40+       | 2.10     | May be upgraded to 80 GB at the same price
+# A100-40GB       | 40        | 2.10     | Explicit 40 GB variant
+# A100-80GB       | 80        | 2.50     | Explicit 80 GB variant
+# RTX-PRO-6000    | 96        | 3.03     | Blackwell; check CUDA/PyTorch compatibility
+# H100            | 80+       | 3.95     | May be upgraded to H200 at the same price
+# H100!           | 80        | 3.95     | Disable the automatic H200 upgrade
+# H200            | 141       | 4.54     | Hopper
+# B200            | ~180      | 6.25     | Blackwell; usable VRAM can vary
+# B200+           | ~180/288  | 6.25     | B200 or B300; must support CUDA 13.1+
+# B300            | 288       | 7.10     | Blackwell Ultra; requires CUDA 13.1+
+#
+# A larger GPU's memory alone does not guarantee runtime compatibility.
+# GPU selection changes take effect after: uv run comfy-bridge deploy
+# Sources:
+# https://modal.com/docs/guide/gpu
+# https://modal.com/pricing
+# https://modal.com/docs/examples/very_large_models
+# https://www.nvidia.com/en-us/data-center/graphics-cards-for-virtualization/
+#
+version: 1
+app_name: comfy-bridge        # Volumes: <app_name>-models and <app_name>-jobs
+cpu_only:                       # install_model and refresh_models
+  cpus: 4
+  memory_mib: 8192              # Container system RAM, not GPU VRAM
+gpu_worker:
+  gpu: L40S
+  cpus: 1
+  memory_mib: 32768             # Container system RAM, not GPU VRAM
+  scaledown_window_seconds: 60  # Idle time before scaling to zero (2–3600)

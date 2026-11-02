@@ -1,0 +1,48 @@
+[project]
+name = "comfyui-modal-bridge"
+version = "0.1.0"
+description = "Local ComfyUI editor and durable queue backed by scale-to-zero Modal GPUs"
+requires-python = ">=3.12,<3.14"
+dependencies = [
+    "aiohttp>=3.14.5",
+    "comfyui-frontend-package==1.57.1",
+    "modal>=1.6.2",
+    "pillow>=13.0.0",
+    "pyyaml>=6.0.3",
+    "tqdm>=4.70.1",
+]
+
+[project.scripts]
+comfy-bridge = "comfyui_modal.cli:main"
+
+[project.optional-dependencies]
+worker = [
+    "huggingface-hub>=2.3.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/comfyui_modal"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B"]
+
+[dependency-groups]
+dev = [
+    "playwright>=1.64.1",
+    "pytest>=9.1.1",
+    "pytest-aiohttp>=1.1.1",
+    "pytest-asyncio>=1.4.0",
+    "ruff>=0.17.2",
+]
