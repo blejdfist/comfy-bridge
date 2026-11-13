@@ -8,6 +8,7 @@ import struct
 import time
 import uuid
 from email.message import Message
+from http import HTTPStatus
 from pathlib import Path
 from urllib.parse import parse_qs, urljoin, urlsplit, urlunsplit
 
@@ -27,6 +28,7 @@ MODEL_FOLDERS = (
     "upscale_models",
 )
 MODEL_SUFFIXES = {".safetensors", ".ckpt", ".pt", ".pth", ".bin", ".gguf"}
+RESUME_ATTEMPTS = 5
 
 
 class ModelDownloadError(ValueError):
@@ -127,13 +129,14 @@ def auth_headers(url, initial_host, credentials):
     return headers
 
 
-async def open_download(session, url, credentials):
+async def open_download(session, url, credentials, start=0):
     initial_host = urlsplit(url).hostname.lower()
     for _ in range(9):
         url = checked_url(url)
-        response = await session.get(
-            url, headers=auth_headers(url, initial_host, credentials), allow_redirects=False
-        )
+        headers = auth_headers(url, initial_host, credentials)
+        if start:
+            headers["Range"] = f"bytes={start}-"
+        response = await session.get(url, headers=headers, allow_redirects=False)
         if response.status in {301, 302, 303, 307, 308}:
             location = response.headers.get("Location")
             response.release()
@@ -333,19 +336,38 @@ async def download_model(request, root: Path, report, credentials=None, session=
         received, last_update = 0, 0.0
         total = response.content_length
         with temporary.open("wb") as output:
-            async for chunk in response.content.iter_chunked(1024 * 1024):
-                await asyncio.to_thread(output.write, chunk)
-                received += len(chunk)
-                if time.monotonic() - last_update >= 0.5:
-                    await report(
-                        {
-                            "phase": "downloading",
-                            "bytes": received,
-                            "total": total,
-                            "filename": filename,
-                        }
-                    )
-                    last_update = time.monotonic()
+            for attempt in range(RESUME_ATTEMPTS + 1):
+                try:
+                    async for chunk in response.content.iter_chunked(1024 * 1024):
+                        await asyncio.to_thread(output.write, chunk)
+                        received += len(chunk)
+                        if time.monotonic() - last_update >= 0.5:
+                            await report(
+                                {
+                                    "phase": "downloading",
+                                    "bytes": received,
+                                    "total": total,
+                                    "filename": filename,
+                                }
+                            )
+                            last_update = time.monotonic()
+                    break
+                except (aiohttp.ClientPayloadError, aiohttp.ClientConnectionError, TimeoutError):
+                    # Hosts and CDNs drop long transfers; continue from the bytes on disk.
+                    response.release()
+                    if attempt == RESUME_ATTEMPTS:
+                        raise
+                    await asyncio.sleep(2**attempt)
+                    # Re-resolve from the source URL so expired signed CDN links are refreshed.
+                    response = await open_download(session, source["url"], credentials, received)
+                    if response.status != HTTPStatus.PARTIAL_CONTENT:
+                        await asyncio.to_thread(output.seek, 0)
+                        await asyncio.to_thread(output.truncate)
+                        received = 0
+                    elif not response.headers.get("Content-Range", "").startswith(
+                        f"bytes {received}-"
+                    ):
+                        raise ModelDownloadError("Model host resumed at the wrong offset")
         if total is not None and received != total:
             raise ModelDownloadError(
                 "Model download was truncated; the incomplete file was discarded"
